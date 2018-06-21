@@ -34,18 +34,18 @@ public class AsyncNetworkSocket implements AsyncSocket {
         allocator = new Allocator();
         mChannel = new SocketChannelWrapper(channel);
     }
-    
+
     void attach(DatagramChannel channel) throws IOException {
         mChannel = new DatagramChannelWrapper(channel);
         // keep udp at roughly the mtu, which is 1540 or something
         // letting it grow freaks out nio apparently.
         allocator = new Allocator(8192);
     }
-    
+
     ChannelWrapper getChannel() {
         return mChannel;
     }
-    
+
     public void onDataWritable() {
 //        assert mWriteableHandler != null;
         if (!mChannel.isChunked()) {
@@ -59,12 +59,12 @@ public class AsyncNetworkSocket implements AsyncSocket {
     private ChannelWrapper mChannel;
     private SelectionKey mKey;
     private AsyncServer mServer;
-    
+
     void setup(AsyncServer server, SelectionKey key) {
         mServer = server;
         mKey = key;
     }
-    
+
     @Override
     public void write(final ByteBufferList list) {
         if (mServer.getAffinity() != Thread.currentThread()) {
@@ -95,7 +95,7 @@ public class AsyncNetworkSocket implements AsyncSocket {
             reportClose(e);
         }
     }
-    
+
     private void handleRemaining(int remaining) throws IOException {
         if (!mKey.isValid())
             throw new IOException(new CancelledKeyException());
@@ -117,42 +117,30 @@ public class AsyncNetworkSocket implements AsyncSocket {
     Allocator allocator;
     int onReadable() {
         spitPending();
-        // even if the socket is paused,
-        // it may end up getting a queued readable event if it is
-        // already in the selector's ready queue.
         if (mPaused)
             return 0;
         int total = 0;
         try {
             boolean closed = false;
 
-//            ByteBufferList.obtainArray(buffers, Math.min(Math.max(mToAlloc, 2 << 11), maxAlloc));
-            ByteBuffer b = allocator.allocate();
-            // keep track of the max mount read during this read cycle
-            // so we can be quicker about allocations during the next
-            // time this socket reads.
-            long read = mChannel.read(b);
+            long read;
+            ByteBufferList byteBufferList = new ByteBufferList();
+            do {
+                ByteBuffer b = allocator.allocate();
+                read = mChannel.read(b);
+                b.flip();
+                byteBufferList.add(b);
+                total += read;
+            } while (read > 8191);
+
             if (read < 0) {
                 closeInternal();
                 closed = true;
             }
-            else {
-                total += read;
-            }
-            if (read > 0) {
-                allocator.track(read);
-                b.flip();
-//                for (int i = 0; i < buffers.length; i++) {
-//                    ByteBuffer b = buffers[i];
-//                    buffers[i] = null;
-//                    b.flip();
-//                    pending.add(b);
-//                }
-                pending.add(b);
+
+            if (total > 0) {
+                pending.add(byteBufferList);
                 Util.emitAllData(this, pending);
-            }
-            else {
-                ByteBufferList.reclaim(b);
             }
 
             if (closed) {
@@ -165,10 +153,10 @@ public class AsyncNetworkSocket implements AsyncSocket {
             reportEndPending(e);
             reportClose(e);
         }
-        
+
         return total;
     }
-    
+
     boolean closeReported;
     protected void reportClose(Exception e) {
         if (closeReported)
@@ -198,7 +186,7 @@ public class AsyncNetworkSocket implements AsyncSocket {
     WritableCallback mWriteableHandler;
     @Override
     public void setWriteableCallback(WritableCallback handler) {
-        mWriteableHandler = handler;        
+        mWriteableHandler = handler;
     }
 
     DataCallback mDataHandler;
@@ -215,7 +203,7 @@ public class AsyncNetworkSocket implements AsyncSocket {
     CompletedCallback mClosedHander;
     @Override
     public void setClosedCallback(CompletedCallback handler) {
-        mClosedHander = handler;       
+        mClosedHander = handler;
     }
 
     @Override
@@ -247,7 +235,7 @@ public class AsyncNetworkSocket implements AsyncSocket {
         }
         reportEnd(e);
     }
-    
+
     private CompletedCallback mCompletedCallback;
     @Override
     public void setEndCallback(CompletedCallback callback) {
@@ -263,7 +251,7 @@ public class AsyncNetworkSocket implements AsyncSocket {
     public boolean isOpen() {
         return mChannel.isConnected() && mKey.isValid();
     }
-    
+
     boolean mPaused = false;
     @Override
     public void pause() {
@@ -276,7 +264,7 @@ public class AsyncNetworkSocket implements AsyncSocket {
             });
             return;
         }
-        
+
         if (mPaused)
             return;
 
@@ -287,13 +275,13 @@ public class AsyncNetworkSocket implements AsyncSocket {
         catch (Exception ex) {
         }
     }
-    
+
     private void spitPending() {
         if (pending.hasRemaining()) {
             Util.emitAllData(this, pending);
         }
     }
-    
+
     @Override
     public void resume() {
         if (mServer.getAffinity() != Thread.currentThread()) {
@@ -305,7 +293,7 @@ public class AsyncNetworkSocket implements AsyncSocket {
             });
             return;
         }
-        
+
         if (!mPaused)
             return;
         mPaused = false;
@@ -318,7 +306,7 @@ public class AsyncNetworkSocket implements AsyncSocket {
         if (!isOpen())
             reportEndPending(mPendingEndException);
     }
-    
+
     @Override
     public boolean isPaused() {
         return mPaused;
@@ -333,7 +321,7 @@ public class AsyncNetworkSocket implements AsyncSocket {
     public InetSocketAddress getRemoteAddress() {
         return socketAddress;
     }
-    
+
     public int getLocalPort() {
         return mChannel.getLocalPort();
     }
