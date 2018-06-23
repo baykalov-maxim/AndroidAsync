@@ -18,7 +18,6 @@ package com.koushikdutta.async.http.spdy;
 import android.os.Build;
 
 import com.koushikdutta.async.BufferedDataSink;
-import com.koushikdutta.async.BuildConfig;
 import com.koushikdutta.async.ByteBufferList;
 import com.koushikdutta.async.DataEmitter;
 import com.koushikdutta.async.DataEmitterReader;

@@ -126,6 +126,7 @@ public class AsyncNetworkSocket implements AsyncSocket {
             long read;
             ByteBufferList byteBufferList = new ByteBufferList();
             do {
+                Thread.sleep(10);
                 ByteBuffer b = allocator.allocate();
                 read = mChannel.read(b);
                 b.flip();
